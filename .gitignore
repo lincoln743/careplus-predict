@@ -1,0 +1,15 @@
+node_modules/
+.expo/
+venv/
+__pycache__/
+*.pyc
+.env
+
+ml/data/raw/
+ml/data/processed/
+ml/artifacts/
+
+expo/CarePlusPredictExpo_V04.apk
+
+api/db/*.db
+api/*.db

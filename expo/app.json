@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "CarePlus Predict",
+    "slug": "careplus-predict",
+    "scheme": "careplus-predict",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/careplus-logo.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/images/careplus-logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0d6c8b"
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.careplus.predict"
+    },
+    "android": {
+      "package": "com.careplus.predict",
+      "versionCode": 1,
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "ACCESS_FINE_LOCATION",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "VIBRATE",
+        "RECEIVE_BOOT_COMPLETED",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.INTERNET"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/careplus-logo.png",
+        "backgroundColor": "#0d6c8b"
+      }
+    },
+    "web": {
+      "favicon": "./assets/images/careplus-logo.png"
+    },
+    "plugins": [
+      "expo-font",
+      "expo-file-system",
+      "react-native-health"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "87bf106a-bf9c-47a1-a2c4-0a995b4ee03f"
+      }
+    }
+  }
+}
