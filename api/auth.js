@@ -1,44 +1,52 @@
 const db = require('./db');
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
-const SECRET = "careplus_secret_key";
+const bcrypt = require('bcrypt');
 
-// Registrar usuário com hash
-function registerUser(email, password, type) {
-  const hash = bcrypt.hashSync(password, 10);
+async function authRoutes(fastify, options) {
+  fastify.post('/auth/login', async (request, reply) => {
+    try {
+      const { email, password } = request.body;
 
-  const stmt = db.prepare(`
-    INSERT INTO users (email, password, type)
-    VALUES (?, ?, ?)
-  `);
-  const result = stmt.run(email, hash, type);
+      const user = db.prepare(
+        'SELECT * FROM users WHERE email = ?'
+      ).get(email);
 
-  return { id: result.lastInsertRowid, email, type };
+      console.log('AUTH USER:', user);
+
+      if (!user) {
+        reply.status(401);
+        return { ok: false, error: 'Usuário ou senha inválidos' };
+      }
+
+      const valid = await bcrypt.compare(password, user.password);
+
+      if (!valid) {
+        reply.status(401);
+        return { ok: false, error: 'Usuário ou senha inválidos' };
+      }
+
+      const userType =
+        user.role ||
+        user.type ||
+        user.userType ||
+        user.profile;
+
+      const response = {
+        ok: true,
+        email: user.email,
+        token: 'fake-jwt-token-v2',
+        userId: user.id,
+        userType,
+        debugVersion: 'auth-v3',
+      };
+
+      console.log('AUTH RESPONSE:', response);
+      return response;
+    } catch (err) {
+      console.log('AUTH ERROR:', err);
+      reply.status(500);
+      return { ok: false, error: 'Erro no login' };
+    }
+  });
 }
 
-// Login verificando hash
-function loginUser(email, password) {
-  const stmt = db.prepare(`SELECT * FROM users WHERE email = ?`);
-  const user = stmt.get(email);
-
-  if (!user) return null;
-
-  // Compara senha informada com a hash do banco
-  const isValid = bcrypt.compareSync(password, user.password);
-  if (!isValid) return null;
-
-  const token = jwt.sign(
-    { id: user.id, type: user.type },
-    SECRET,
-    { expiresIn: "2h" }
-  );
-
-  return {
-    ok: true,
-    token,
-    type: user.type,
-    id: user.id
-  };
-}
-
-module.exports = { registerUser, loginUser };
+module.exports = authRoutes;
