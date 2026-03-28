@@ -12,10 +12,12 @@ import {
   Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { loginRequest } from '../services/api';
+import { loginUser } from '../services/auth';
+import { useAuth } from '../context/AuthContext';
 
-const LoginScreen = ({ navigation }) => {
+const LoginScreen = () => {
   const CarePlusLogo = require('../../assets/images/careplus-logo.png');
+  const { signIn } = useAuth();
 
   const [isDoctor, setIsDoctor] = useState(false);
   const [email, setEmail] = useState('paciente@careplus.com');
@@ -30,36 +32,39 @@ const LoginScreen = ({ navigation }) => {
       duration: 800,
       useNativeDriver: true,
     }).start();
-  }, []);
+  }, [fadeAnim]);
 
   const handleLogin = async () => {
-    setLoading(true);
+    try {
+      setLoading(true);
 
-    const result = await loginRequest(email, password);
-    setLoading(false);
+      const result = await loginUser(email, password);
+      console.log('LOGIN RESULT:', result);
 
-    console.log("LOGIN RESULT:", result);
+      if (!result?.ok) {
+        Alert.alert('Erro', 'Usuário ou senha inválidos');
+        return;
+      }
 
-    if (!result.ok) {
-      Alert.alert("Erro", "Usuário ou senha inválidos");
-      return;
-    }
+      const userId = result.userId;
+      const userType = result.userType;
+      const token = result.token;
 
-    const userId = result.id;
-    const userType = result.type;
+      if (!userId || !userType) {
+        Alert.alert('Erro', 'Backend não retornou userId/type');
+        return;
+      }
 
-    if (!userId || !userType) {
-      Alert.alert("Erro", "Backend não retornou userId/type");
-      return;
-    }
-
-    console.log("USER ID:", userId);
-    console.log("USER TYPE:", userType);
-
-    if (userType === "doctor") {
-      navigation.replace("DoctorTabs", { userId });
-    } else {
-      navigation.replace("PatientTabs", { userId });
+      signIn({
+        userId: String(userId),
+        userType,
+        token,
+      });
+    } catch (error) {
+      console.log('LOGIN ERROR:', error);
+      Alert.alert('Erro', 'Falha ao fazer login');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -75,20 +80,26 @@ const LoginScreen = ({ navigation }) => {
             style={[styles.switchButton, !isDoctor && styles.activeSwitch]}
             onPress={() => {
               setIsDoctor(false);
-              setEmail("paciente@careplus.com");
+              setEmail('paciente@careplus.com');
+              setPassword('123456');
             }}
           >
-            <Text style={[styles.switchText, !isDoctor && styles.activeSwitchText]}>Paciente</Text>
+            <Text style={[styles.switchText, !isDoctor && styles.activeSwitchText]}>
+              Paciente
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.switchButton, isDoctor && styles.activeSwitch]}
             onPress={() => {
               setIsDoctor(true);
-              setEmail("medico@careplus.com");
+              setEmail('medico@careplus.com');
+              setPassword('123456');
             }}
           >
-            <Text style={[styles.switchText, isDoctor && styles.activeSwitchText]}>Médico</Text>
+            <Text style={[styles.switchText, isDoctor && styles.activeSwitchText]}>
+              Médico
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -98,6 +109,7 @@ const LoginScreen = ({ navigation }) => {
           placeholderTextColor="#666"
           value={email}
           onChangeText={setEmail}
+          autoCapitalize="none"
         />
 
         <TextInput
@@ -122,7 +134,6 @@ const LoginScreen = ({ navigation }) => {
         <TouchableOpacity style={styles.forgotContainer}>
           <Text style={styles.forgotText}>Esqueceu sua senha?</Text>
         </TouchableOpacity>
-
       </Animated.View>
     </LinearGradient>
   );
@@ -142,10 +153,10 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   title: {
-    fontFamily: 'Poppins_600SemiBold',
     fontSize: 18,
     color: '#0d6c8b',
     marginBottom: 25,
+    fontWeight: '600',
   },
   switchContainer: {
     flexDirection: 'row',
@@ -165,8 +176,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#0d6c8b',
   },
   switchText: {
-    fontFamily: 'Poppins_500Medium',
     color: '#0d6c8b',
+    fontWeight: '500',
   },
   activeSwitchText: { color: '#fff' },
   input: {
@@ -178,7 +189,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     marginBottom: 12,
     backgroundColor: '#fff',
-    fontFamily: 'Poppins_400Regular',
   },
   loginButton: {
     width: '100%',
@@ -190,13 +200,12 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   loginText: {
-    fontFamily: 'Poppins_500Medium',
     color: '#fff',
     fontSize: 16,
+    fontWeight: '500',
   },
   forgotContainer: { marginTop: 12 },
   forgotText: {
-    fontFamily: 'Poppins_400Regular',
     color: '#0d6c8b',
     fontSize: 13,
   },

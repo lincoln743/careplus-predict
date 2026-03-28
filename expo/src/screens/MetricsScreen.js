@@ -5,17 +5,23 @@ import {
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { BarChart, LineChart } from 'react-native-chart-kit';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../context/AuthContext';
+import { getLatestPatientHealth } from '../services/patient';
+import { apiRequest } from '../services/apiClient';
 
 const screenWidth = Dimensions.get('window').width;
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 export default function MetricsScreen() {
+  const { userId, token } = useAuth();
+
   const [metrics, setMetrics] = useState({
     fc: 71,
-    steps: generateWeekSteps(),
-    sleep: generateWeekSleep(),
+    steps: generateFallbackWeekSteps(),
+    sleep: generateFallbackWeekSleep(),
     progress: 0.6,
   });
+  const [dataSource, setDataSource] = useState('fallback demo');
 
   const syncAnim = useRef(new Animated.Value(0)).current;
   const progressAnim = useRef(new Animated.Value(metrics.progress)).current;
@@ -29,7 +35,7 @@ export default function MetricsScreen() {
     );
     loop.start();
     return () => loop.stop();
-  }, []);
+  }, [syncAnim]);
 
   useEffect(() => {
     Animated.timing(progressAnim, {
@@ -37,25 +43,65 @@ export default function MetricsScreen() {
       duration: 1200,
       useNativeDriver: false,
     }).start();
-  }, []);
+  }, [metrics.progress, progressAnim]);
+
+  const loadRealMetrics = async () => {
+    try {
+      const latestResponse = await getLatestPatientHealth(userId, token);
+      const dailyResponse = await apiRequest(`/health/history/daily?userId=${encodeURIComponent(userId)}`, {
+        method: 'GET',
+        token,
+      });
+
+      if (!latestResponse?.ok || !latestResponse?.data?.ok) {
+        throw new Error('latest sem dados');
+      }
+
+      const latest = latestResponse.data.data || {};
+      const days = dailyResponse?.ok && dailyResponse?.data?.ok && Array.isArray(dailyResponse.data.days)
+        ? dailyResponse.data.days
+        : [];
+
+      if (!days.length) {
+        throw new Error('daily sem dados');
+      }
+
+      const weekSteps = normalizeWeekSteps(days);
+      const weekSleep = normalizeWeekSleep(days);
+
+      const avgSteps = weekSteps.reduce((a, b) => a + b.steps, 0) / weekSteps.length;
+      const avgSleep = weekSleep.reduce((a, b) => a + b.hours, 0) / weekSleep.length;
+      const fc = Number(latest.heartRate ?? latest.fc ?? 71);
+
+      const progress = clamp(((avgSteps / 8000) * 0.6) + ((avgSleep / 8) * 0.4), 0, 1);
+
+      setMetrics({
+        fc,
+        steps: weekSteps,
+        sleep: weekSleep,
+        progress,
+      });
+
+      setDataSource('backend');
+    } catch (error) {
+      console.log('PATIENT METRICS FALLBACK:', error);
+      setMetrics({
+        fc: 71,
+        steps: generateFallbackWeekSteps(),
+        sleep: generateFallbackWeekSleep(),
+        progress: 0.6,
+      });
+      setDataSource('fallback demo');
+    }
+  };
 
   useEffect(() => {
+    loadRealMetrics();
     const timer = setInterval(() => {
-      const m = {
-        fc: randomInRange(68, 74),
-        steps: generateWeekSteps(),
-        sleep: generateWeekSleep(),
-        progress: randomInRange(0.55, 0.75),
-      };
-      setMetrics(m);
-      Animated.timing(progressAnim, {
-        toValue: m.progress,
-        duration: 1000,
-        useNativeDriver: false,
-      }).start();
+      loadRealMetrics();
     }, 5000);
     return () => clearInterval(timer);
-  }, []);
+  }, [userId, token]);
 
   const opacity = syncAnim.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] });
   const stepsChartData = { labels: metrics.steps.map((d) => d.day), datasets: [{ data: metrics.steps.map((d) => d.steps) }] };
@@ -63,10 +109,9 @@ export default function MetricsScreen() {
   const avgSteps = metrics.steps.reduce((a, b) => a + b.steps, 0) / metrics.steps.length;
   const totalSteps = metrics.steps.reduce((a, b) => a + b.steps, 0);
 
-  // === SEMICÍRCULO CORRIGIDO: sentido horário (esquerda → direita) ===
   const R = 130;
   const arcLength = Math.PI * R;
-  const ARC_D = "M20,140 A130,130 0 0,1 280,140"; // sentido horário
+  const ARC_D = "M20,140 A130,130 0 0,1 280,140";
   const strokeDashoffset = progressAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [arcLength, 0],
@@ -78,7 +123,10 @@ export default function MetricsScreen() {
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={[styles.header, { marginTop: notchOffset }]}>
-          <Text style={styles.title}>Métricas de Saúde</Text>
+          <View>
+            <Text style={styles.title}>Métricas de Saúde</Text>
+            <Text style={styles.sourceText}>Fonte: {dataSource}</Text>
+          </View>
           <Animated.View style={{ opacity, marginRight: 10 }}>
             <Ionicons name="watch-outline" size={26} color="#0d6c8b" />
           </Animated.View>
@@ -94,7 +142,6 @@ export default function MetricsScreen() {
           </View>
         </View>
 
-        {/* Progresso Semanal (U invertido) */}
         <View style={styles.card}>
           <Text style={styles.cardHeader}>Progresso Semanal</Text>
           <View style={styles.donutContainer}>
@@ -137,10 +184,14 @@ export default function MetricsScreen() {
             style={{ borderRadius: 12, marginLeft: -10 }}
           />
           <View style={styles.footerStats}>
-            <Text style={styles.footerValue}>{totalSteps.toLocaleString('pt-BR')}</Text>
-            <Text style={styles.footerLabel}>Total de Passos</Text>
-            <Text style={styles.footerValue}>{avgSteps.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</Text>
-            <Text style={styles.footerLabel}>Média Diária</Text>
+            <View>
+              <Text style={styles.footerValue}>{totalSteps.toLocaleString('pt-BR')}</Text>
+              <Text style={styles.footerLabel}>Total de Passos</Text>
+            </View>
+            <View>
+              <Text style={styles.footerValue}>{avgSteps.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</Text>
+              <Text style={styles.footerLabel}>Média Diária</Text>
+            </View>
           </View>
         </View>
 
@@ -176,16 +227,43 @@ const SummaryItem = ({ emoji, value, label }) => (
   </View>
 );
 
-function generateWeekSteps() {
-  const days = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
-  return days.map((day) => ({ day, steps: randomInRange(3500, 8500) }));
+function normalizeWeekSteps(days) {
+  return days.slice(-7).map((d, idx) => ({
+    day: getDayLabel(d.date, idx),
+    steps: Number(d.totalSteps ?? d.steps ?? 0),
+  }));
 }
-function generateWeekSleep() {
-  const days = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
-  return days.map((day) => ({ day, hours: randomInRange(5, 8.5) }));
+
+function normalizeWeekSleep(days) {
+  return days.slice(-7).map((d, idx) => ({
+    day: getDayLabel(d.date, idx),
+    hours: Number(d.avgSleep ?? d.sleep ?? 0),
+  }));
 }
-function randomInRange(min, max) {
-  return +(Math.random() * (max - min) + min).toFixed(1);
+
+function getDayLabel(rawDate, idx) {
+  const labels = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const parsed = rawDate ? new Date(rawDate) : null;
+  if (parsed && !Number.isNaN(parsed.getTime())) {
+    return labels[parsed.getDay()];
+  }
+  return ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'][idx] || `D${idx + 1}`;
+}
+
+function generateFallbackWeekSteps() {
+  const days = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+  const values = [5200, 6100, 4800, 7300, 6900, 4200, 5600];
+  return days.map((day, i) => ({ day, steps: values[i] }));
+}
+
+function generateFallbackWeekSleep() {
+  const days = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+  const values = [6.2, 6.8, 5.9, 7.1, 6.7, 7.4, 6.5];
+  return days.map((day, i) => ({ day, hours: values[i] }));
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 const styles = StyleSheet.create({
@@ -193,6 +271,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: 16 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   title: { fontSize: 20, fontFamily: 'Poppins_600SemiBold', color: '#0d6c8b' },
+  sourceText: { fontSize: 12, color: '#777', fontStyle: 'italic', marginTop: 4 },
   card: { backgroundColor: '#fff', borderRadius: 16, marginBottom: 16, padding: 16, elevation: 3 },
   cardHeader: { fontSize: 16, fontFamily: 'Poppins_600SemiBold', color: '#000', marginBottom: 16 },
   donutContainer: { alignSelf: 'center', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },

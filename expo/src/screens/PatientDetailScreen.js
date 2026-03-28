@@ -1,22 +1,27 @@
 import React, { useRef, useEffect, useState } from 'react';
 import {
-  View,
   Text,
   StyleSheet,
   TouchableOpacity,
   Animated,
   Easing,
-  ScrollView,
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../context/AuthContext';
+import { getLatestPatientHealth } from '../services/patient';
 
 export default function PatientDetailScreen({ navigation, route }) {
+  const { token } = useAuth();
   const { patient } = route.params || {};
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(20)).current;
+
   const [loadingBack, setLoadingBack] = useState(false);
+  const [loadingData, setLoadingData] = useState(false);
+  const [dataSource, setDataSource] = useState('navegação');
+  const [detail, setDetail] = useState(patient || null);
 
   useEffect(() => {
     Animated.parallel([
@@ -33,7 +38,41 @@ export default function PatientDetailScreen({ navigation, route }) {
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+  }, [fadeAnim, translateY]);
+
+  useEffect(() => {
+    const loadRealData = async () => {
+      if (!patient?.id) return;
+
+      try {
+        setLoadingData(true);
+
+        const response = await getLatestPatientHealth(patient.id, token);
+
+        if (!response?.ok || !response?.data?.ok || !response?.data?.data) {
+          throw new Error('Sem dados recentes');
+        }
+
+        const latest = response.data.data;
+
+        setDetail((prev) => ({
+          ...prev,
+          steps: latest.steps ?? prev?.steps ?? 0,
+          sleep: latest.sleep ?? prev?.sleep ?? 0,
+          distance: latest.distance ?? prev?.distance ?? 0,
+        }));
+
+        setDataSource('backend');
+      } catch (error) {
+        console.log('PATIENT DETAIL FALLBACK:', error);
+        setDataSource('navegação');
+      } finally {
+        setLoadingData(false);
+      }
+    };
+
+    loadRealData();
+  }, [patient?.id, token]);
 
   const handleBack = () => {
     setLoadingBack(true);
@@ -55,8 +94,74 @@ export default function PatientDetailScreen({ navigation, route }) {
       contentContainerStyle={{ paddingBottom: 40 }}
       showsVerticalScrollIndicator={false}
     >
+      <Text style={styles.sourceText}>Fonte: {dataSource}</Text>
+
+      <Text style={styles.loadingText}>
+        {loadingData ? 'Atualizando dados do paciente...' : ''}
+      </Text>
+
+      <Animated.View>
+        <Text />
+      </Animated.View>
+
+      <Animated.View>
+        <Text />
+      </Animated.View>
+
+      <Animated.View>
+        <Text />
+      </Animated.View>
+
+      <Animated.View>
+        <Text />
+      </Animated.View>
+
+      <Animated.View>
+        <Text />
+      </Animated.View>
+
+      <Animated.View>
+        <Text />
+      </Animated.View>
+
+      <Animated.View>
+        <Text />
+      </Animated.View>
+
+      <Animated.View>
+        <Text />
+      </Animated.View>
+
+      <Animated.View>
+        <Text />
+      </Animated.View>
+
+      <Animated.View>
+        <Text />
+      </Animated.View>
+
+      <Animated.View>
+        <Text />
+      </Animated.View>
+
+      <Animated.View>
+        <Text />
+      </Animated.View>
+
+      <Animated.View>
+        <Text />
+      </Animated.View>
+
+      <Animated.View>
+        <Text />
+      </Animated.View>
+
+      <Animated.View>
+        <Text />
+      </Animated.View>
+
       {/* header */}
-      <View style={styles.headerRow}>
+      <Animated.View style={styles.headerRow}>
         <TouchableOpacity
           style={styles.backButton}
           activeOpacity={0.8}
@@ -65,78 +170,87 @@ export default function PatientDetailScreen({ navigation, route }) {
           <Ionicons name="arrow-back-outline" size={22} color="#0d6c8b" />
         </TouchableOpacity>
         <Text style={styles.title}>Detalhes do Paciente</Text>
-      </View>
+      </Animated.View>
 
       {/* bloco informações básicas */}
-      <View style={styles.card}>
+      <Animated.View style={styles.card}>
         <Text style={styles.cardTitle}>Informações Básicas</Text>
-        {patient ? (
+        {detail ? (
           <>
             <Text style={styles.info}>
               <Text style={styles.label}>Nome: </Text>
-              {patient.name}
+              {detail.name}
             </Text>
 
             <Text style={styles.info}>
               <Text style={styles.label}>Idade: </Text>
-              {patient.age} anos
+              {detail.age} anos
             </Text>
 
             <Text style={styles.info}>
               <Text style={styles.label}>Score de Saúde: </Text>
-              {patient.healthScore}%
+              {detail.healthScore ?? detail.score ?? 0}%
             </Text>
 
             <Text style={styles.info}>
               <Text style={styles.label}>Risco: </Text>
-              {patient.riskLevel}
+              {detail.riskLevel ?? detail.status ?? 'N/A'}
             </Text>
 
             <Text style={styles.info}>
               <Text style={styles.label}>Próxima Consulta: </Text>
-              {patient.nextAppointment}
+              {detail.nextAppointment || 'Não agendada'}
             </Text>
           </>
         ) : (
           <Text style={styles.info}>Nenhum paciente selecionado.</Text>
         )}
-      </View>
+      </Animated.View>
 
       {/* alertas */}
-      {patient?.alerts && (
-        <View style={styles.card}>
+      {detail?.alerts && (
+        <Animated.View style={styles.card}>
           <Text style={styles.cardTitle}>Alertas Recentes</Text>
-          {patient.alerts.map((alert, idx) => (
-            <View key={idx} style={styles.alertRow}>
-              <Ionicons name="alert-circle-outline" size={18} color="#d32f2f" />
-              <Text style={styles.alertText}>{alert.replace(/_/g, ' ')}</Text>
-            </View>
-          ))}
-        </View>
+          {detail.alerts.length > 0 ? (
+            detail.alerts.map((alert, idx) => (
+              <Animated.View key={idx} style={styles.alertRow}>
+                <Ionicons name="alert-circle-outline" size={18} color="#d32f2f" />
+                <Text style={styles.alertText}>{String(alert).replace(/_/g, ' ')}</Text>
+              </Animated.View>
+            ))
+          ) : (
+            <Text style={styles.info}>Nenhum alerta recente.</Text>
+          )}
+        </Animated.View>
       )}
 
       {/* indicadores atuais */}
-      {patient && (
-        <View style={styles.card}>
+      {detail && (
+        <Animated.View style={styles.card}>
           <Text style={styles.cardTitle}>Indicadores Atuais</Text>
 
-          <View style={styles.metricRow}>
+          <Animated.View style={styles.metricRow}>
             <Ionicons name="pulse-outline" size={20} color="#d32f2f" />
             <Text style={styles.metricText}>
-              Frequência Cardíaca: {patient.heartRate} bpm
+              Frequência Cardíaca: {detail.heartRate ?? 0} bpm
             </Text>
-          </View>
+          </Animated.View>
 
-          <View style={styles.metricRow}>
+          <Animated.View style={styles.metricRow}>
             <Ionicons name="walk-outline" size={20} color="#0d6c8b" />
-            <Text style={styles.metricText}>Passos: {patient.steps}</Text>
-          </View>
+            <Text style={styles.metricText}>Passos: {detail.steps ?? 0}</Text>
+          </Animated.View>
 
-          <View style={styles.metricRow}>
+          <Animated.View style={styles.metricRow}>
             <Ionicons name="moon-outline" size={20} color="#0d6c8b" />
-            <Text style={styles.metricText}>Sono: {patient.sleep}h</Text>
-          </View>
-        </View>
+            <Text style={styles.metricText}>Sono: {detail.sleep ?? 0}h</Text>
+          </Animated.View>
+
+          <Animated.View style={styles.metricRow}>
+            <Ionicons name="navigate-outline" size={20} color="#0d6c8b" />
+            <Text style={styles.metricText}>Distância: {detail.distance ?? 0}</Text>
+          </Animated.View>
+        </Animated.View>
       )}
 
       {/* voltar ao dashboard */}
@@ -160,7 +274,24 @@ export default function PatientDetailScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#eef5f6', paddingHorizontal: 16, paddingTop: 40 },
+  container: {
+    flex: 1,
+    backgroundColor: '#eef5f6',
+    paddingHorizontal: 16,
+    paddingTop: 40,
+  },
+
+  sourceText: {
+    fontSize: 12,
+    color: '#777',
+    fontStyle: 'italic',
+    marginBottom: 6,
+  },
+  loadingText: {
+    fontSize: 12,
+    color: '#0d6c8b',
+    marginBottom: 8,
+  },
 
   headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
   backButton: {

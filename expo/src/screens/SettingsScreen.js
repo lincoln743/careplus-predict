@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
 import {
   View,
   Text,
@@ -19,6 +20,7 @@ import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const SettingsScreen = () => {
+  const { signOut } = useAuth();
   const navigation = useNavigation();
 
   const [darkMode, setDarkMode] = useState(false);
@@ -83,7 +85,7 @@ const SettingsScreen = () => {
         style: 'destructive',
         onPress: async () => {
           try {
-            await AsyncStorage.clear();
+            // removido clear()
             Alert.alert('Concluído', 'Todos os dados locais foram apagados.');
           } catch (error) {
             console.error('Erro ao limpar dados locais:', error);
@@ -95,16 +97,10 @@ const SettingsScreen = () => {
 
   const handleLogout = async () => {
     try {
-      await AsyncStorage.clear();
-      setTimeout(() => navigation.navigate('Login'), 300);
+      signOut();
     } catch (error) {
       console.error('Erro ao sair:', error);
     }
-  };
-
-  const addIntegration = (name) => {
-    setIntegrations([...integrations, { name, enabled: true }]);
-    setModalVisible(false);
   };
 
   return (

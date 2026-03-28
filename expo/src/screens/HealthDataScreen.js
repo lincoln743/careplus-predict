@@ -8,12 +8,16 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-chart-kit';
-import healthKitService from '../services/healthKitService';
+import { useAuth } from '../context/AuthContext';
+import { apiRequest } from '../services/apiClient';
 
 const screenWidth = Dimensions.get('window').width;
 
 export default function HealthDataScreen() {
+  const { userId, token } = useAuth();
+
   const [weekData, setWeekData] = useState([]);
+  const [dataSource, setDataSource] = useState('fallback demo');
   const [stats, setStats] = useState({
     avg: 0,
     max: 0,
@@ -21,10 +25,77 @@ export default function HealthDataScreen() {
     total: 0,
   });
 
+  const buildFallbackWeek = () => {
+    return [
+      { label: 'Seg', date: '24/03', steps: 5200 },
+      { label: 'Ter', date: '25/03', steps: 6100 },
+      { label: 'Qua', date: '26/03', steps: 4800 },
+      { label: 'Qui', date: '27/03', steps: 7300 },
+      { label: 'Sex', date: '28/03', steps: 6900 },
+      { label: 'Sáb', date: '29/03', steps: 4200 },
+      { label: 'Dom', date: '30/03', steps: 5600 },
+    ];
+  };
+
+  const calcStats = (week) => {
+    const values = week.map((d) => Number(d.steps || 0));
+    const total = values.reduce((acc, v) => acc + v, 0);
+    const avg = values.length ? total / values.length : 0;
+    const max = values.length ? Math.max(...values) : 0;
+    const min = values.length ? Math.min(...values) : 0;
+
+    setStats({
+      avg,
+      max,
+      min,
+      total,
+    });
+  };
+
+  const normalizeWeek = (days) => {
+    const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+    return days.slice(-7).map((d, idx) => {
+      const rawDate = d.date || d.day || d.label || '';
+      const parsedDate = rawDate ? new Date(rawDate) : null;
+
+      const label = parsedDate && !Number.isNaN(parsedDate.getTime())
+        ? weekDays[parsedDate.getDay()]
+        : `D${idx + 1}`;
+
+      const date = parsedDate && !Number.isNaN(parsedDate.getTime())
+        ? parsedDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+        : rawDate || '--/--';
+
+      const steps =
+        Number(d.totalSteps ?? d.steps ?? 0);
+
+      return { label, date, steps };
+    });
+  };
+
   async function loadData() {
-    const { week, stats } = await healthKitService.getLastWeekSteps();
-    setWeekData(week);
-    setStats(stats);
+    try {
+      const response = await apiRequest(`/health/history/daily?userId=${encodeURIComponent(userId)}`, {
+        method: 'GET',
+        token,
+      });
+
+      if (!response?.ok || !response?.data?.ok || !Array.isArray(response.data.days) || response.data.days.length === 0) {
+        throw new Error('Sem histórico diário');
+      }
+
+      const week = normalizeWeek(response.data.days);
+      setWeekData(week);
+      calcStats(week);
+      setDataSource('backend');
+    } catch (error) {
+      console.log('HEALTH DATA FALLBACK:', error);
+      const fallback = buildFallbackWeek();
+      setWeekData(fallback);
+      calcStats(fallback);
+      setDataSource('fallback demo');
+    }
   }
 
   useEffect(() => {
@@ -33,7 +104,7 @@ export default function HealthDataScreen() {
       loadData();
     }, 5000);
     return () => clearInterval(timer);
-  }, []);
+  }, [userId, token]);
 
   const stepsArray = weekData.map((d) => d.steps);
 
@@ -41,8 +112,8 @@ export default function HealthDataScreen() {
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <Text style={styles.sectionHeadline}>Meus Dados de Saúde</Text>
+        <Text style={styles.sourceText}>Fonte: {dataSource}</Text>
 
-        {/* Estatísticas da Semana */}
         <View style={styles.card}>
           <Text style={styles.cardHeader}>Estatísticas da Semana</Text>
           <View style={styles.statsGrid}>
@@ -76,7 +147,6 @@ export default function HealthDataScreen() {
           </View>
         </View>
 
-        {/* Dados Diários */}
         <View style={styles.card}>
           <Text style={styles.cardHeader}>Dados Diários</Text>
 
@@ -97,17 +167,17 @@ export default function HealthDataScreen() {
           ))}
         </View>
 
-        {/* Recomendações */}
         <View style={styles.card}>
           <Text style={styles.cardHeader}>Recomendações</Text>
           <Text style={styles.bullet}>• Tente alcançar 10.000 passos diários</Text>
           <Text style={styles.bullet}>
             • Sua média: {stats.avg.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} passos
           </Text>
-          <Text style={styles.bullet}>• 💪 Você está no caminho certo!</Text>
+          <Text style={styles.bullet}>
+            • {stats.avg >= 7000 ? '💪 Você está no caminho certo!' : '🚶 Tente aumentar gradualmente sua atividade'}
+          </Text>
         </View>
 
-        {/* Gráfico de Passos Semanais */}
         <View style={styles.card}>
           <Text style={styles.cardHeader}>Passos Semanais</Text>
 
@@ -153,7 +223,13 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontFamily: 'Poppins_600SemiBold',
     color: '#0d6c8b',
-    marginTop: 30, // 🔹 afastamento ajustado para evitar sobreposição com câmera
+    marginTop: 30,
+    marginBottom: 6,
+  },
+  sourceText: {
+    fontSize: 12,
+    color: '#777',
+    fontStyle: 'italic',
     marginBottom: 12,
   },
 

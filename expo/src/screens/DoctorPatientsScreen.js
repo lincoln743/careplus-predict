@@ -10,13 +10,18 @@ import {
   Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../context/AuthContext';
+import { getDoctorPatients } from '../services/doctor';
 
 const DoctorPatientsScreen = () => {
+  const { token } = useAuth();
+
   const [filter, setFilter] = useState('Todos');
   const [patients, setPatients] = useState([]);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [lastUpdateTime, setLastUpdateTime] = useState('');
+  const [dataSource, setDataSource] = useState('mock');
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -26,13 +31,13 @@ const DoctorPatientsScreen = () => {
         Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
       ])
     ).start();
-  }, []);
+  }, [pulseAnim]);
 
-  const generatePatients = () => {
+  const buildMockPatients = () => {
     const now = new Date();
     const randomPastHours = () => Math.floor(Math.random() * 6) + 1;
 
-    const data = [
+    return [
       {
         id: '1',
         name: 'Pedro Oliveira',
@@ -86,17 +91,70 @@ const DoctorPatientsScreen = () => {
         lastUpdate: new Date(now - randomPastHours() * 3600000),
       },
     ];
-    setPatients(data);
+  };
 
-    const formattedTime = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const normalizePatients = (rawData) => {
+    const list = Array.isArray(rawData)
+      ? rawData
+      : Array.isArray(rawData?.patients)
+      ? rawData.patients
+      : [];
+
+    return list.map((p, index) => ({
+      id: String(p.id ?? index + 1),
+      name: p.name ?? p.nome ?? `Paciente ${index + 1}`,
+      age: Number(p.age ?? p.idade ?? 0),
+      score: Number(p.score ?? p.riskScore ?? p.healthScore ?? 0),
+      steps: Number(p.steps ?? p.passos ?? 0),
+      sleep: String(p.sleep ?? p.sono ?? 0),
+      heartRate: Number(p.heartRate ?? p.fc ?? p.bpm ?? 0),
+      status: p.status ?? p.riskStatus ?? 'Acompanhamento',
+      alerts: Array.isArray(p.alerts) ? p.alerts : [],
+      online: Boolean(p.online ?? false),
+      lastUpdate: p.lastUpdate ? new Date(p.lastUpdate) : new Date(),
+    }));
+  };
+
+  const updateTimestamp = () => {
+    const now = new Date();
+    const formattedTime = now.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
     setLastUpdateTime(formattedTime);
   };
 
+  const loadPatients = async () => {
+    try {
+      const response = await getDoctorPatients(token);
+
+      if (!response?.ok) {
+        throw new Error('Falha na API');
+      }
+
+      const normalized = normalizePatients(response.data);
+
+      if (!normalized.length) {
+        throw new Error('API sem pacientes');
+      }
+
+      setPatients(normalized);
+      setDataSource('api');
+      updateTimestamp();
+    } catch (error) {
+      console.log('LOAD PATIENTS FALLBACK:', error);
+      setPatients(buildMockPatients());
+      setDataSource('mock');
+      updateTimestamp();
+    }
+  };
+
   useEffect(() => {
-    generatePatients();
-    const interval = setInterval(generatePatients, 5000);
+    loadPatients();
+    const interval = setInterval(loadPatients, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [token]);
 
   const filteredPatients =
     filter === 'Todos' ? patients : patients.filter((p) => p.status === filter);
@@ -113,12 +171,10 @@ const DoctorPatientsScreen = () => {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Pacientes</Text>
       </View>
 
-      {/* Barra de Filtros */}
       <View style={styles.filterContainer}>
         <ScrollView
           horizontal
@@ -139,7 +195,6 @@ const DoctorPatientsScreen = () => {
         </ScrollView>
       </View>
 
-      {/* Lista */}
       <FlatList
         data={filteredPatients}
         keyExtractor={(item) => item.id}
@@ -207,14 +262,15 @@ const DoctorPatientsScreen = () => {
         contentContainerStyle={{ paddingBottom: 110 }}
       />
 
-      {/* Rodapé com hora da última atualização */}
       <View style={styles.updateFooter}>
         <Text style={styles.updateText}>
           Última atualização automática: {lastUpdateTime || '...'}
         </Text>
+        <Text style={styles.updateSource}>
+          Fonte: {dataSource === 'api' ? 'backend' : 'fallback demo'}
+        </Text>
       </View>
 
-      {/* Modal */}
       <Modal transparent visible={modalVisible} animationType="fade" onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
@@ -321,6 +377,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#777',
     fontStyle: 'italic',
+  },
+  updateSource: {
+    fontSize: 11,
+    color: '#999',
+    marginTop: 2,
   },
   modalContainer: {
     flex: 1,

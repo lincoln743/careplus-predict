@@ -1,6 +1,7 @@
 const fastify = require('fastify')({ logger: true });
 const aiRoutes = require('./routes/ai');
 const cors = require('@fastify/cors');
+const doctorRoutes = require('./routes/doctors');
 const {
   saveHealthData,
   getLatestHealthData,
@@ -13,6 +14,7 @@ async function start() {
   await fastify.register(cors, { origin: "*" });
 
   fastify.register(aiRoutes, { prefix: '/ai' });
+  fastify.register(doctorRoutes);
 
   fastify.get("/ping", async () => {
     return { status: "API Online", ts: new Date().toISOString() };

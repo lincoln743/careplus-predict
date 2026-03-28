@@ -9,32 +9,49 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../context/AuthContext';
+import { getLatestPatientHealth } from '../services/patient';
+import { apiRequest } from '../services/apiClient';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
-const DashboardScreen = ({ userId }) => {
+const DashboardScreen = () => {
+  const { userId, token } = useAuth();
+
   const [score, setScore] = useState(72);
   const [fc, setFc] = useState(78);
   const [steps, setSteps] = useState(5200);
   const [sleep, setSleep] = useState(6.5);
   const [progress, setProgress] = useState(75);
+  const [dataSource, setDataSource] = useState('fallback demo');
 
   const animatedValue = useRef(new Animated.Value(0)).current;
 
-  // ------------------------------
-  // MÉTRICAS DINÂMICAS EXISTENTES
-  // ------------------------------
   const radius = 110;
   const circumference = Math.PI * radius;
 
-  const updateData = () => {
-    const newScore = Math.min(100, Math.max(0, score + (Math.random() - 0.5) * 6));
-    setScore(newScore);
-    setFc(f => Math.min(95, Math.max(60, f + (Math.random() - 0.5) * 4)));
-    setSteps(p => Math.min(8000, Math.max(3000, p + (Math.random() - 0.5) * 500)));
-    setSleep(h => Math.min(8, Math.max(4.5, h + (Math.random() - 0.5) * 0.3)));
-    setProgress(p => Math.min(100, Math.max(0, p + (Math.random() - 0.5) * 5)));
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
+  const classifyRisk = (value) => {
+    if (value < 33) return 'Risco Alto';
+    if (value < 67) return 'Atenção';
+    return 'Estável';
+  };
+
+  const calculateScore = ({ stepsValue, sleepValue, fcValue }) => {
+    const stepScore = clamp((stepsValue / 8000) * 100, 0, 100);
+    const sleepScore = clamp((sleepValue / 8) * 100, 0, 100);
+
+    let heartScore = 70;
+    if (fcValue >= 60 && fcValue <= 80) heartScore = 90;
+    else if (fcValue > 80 && fcValue <= 90) heartScore = 70;
+    else if (fcValue > 90) heartScore = 50;
+    else if (fcValue < 60) heartScore = 65;
+
+    return Math.round((stepScore * 0.4) + (sleepScore * 0.35) + (heartScore * 0.25));
+  };
+
+  const animateScore = (newScore) => {
     Animated.timing(animatedValue, {
       toValue: newScore,
       duration: 1000,
@@ -42,34 +59,112 @@ const DashboardScreen = ({ userId }) => {
     }).start();
   };
 
+  const applyData = ({ stepsValue, sleepValue, fcValue }) => {
+    const newScore = calculateScore({ stepsValue, sleepValue, fcValue });
+    const newProgress = clamp(Math.round((newScore / 100) * 100), 0, 100);
+
+    setSteps(stepsValue);
+    setSleep(sleepValue);
+    setFc(fcValue);
+    setScore(newScore);
+    setProgress(newProgress);
+    animateScore(newScore);
+  };
+
+  const loadRealData = async () => {
+    try {
+      const latestResponse = await getLatestPatientHealth(userId, token);
+
+      if (!latestResponse?.ok || !latestResponse?.data?.ok) {
+        throw new Error('health/latest falhou');
+      }
+
+      const latest = latestResponse.data.data || {};
+
+      let stepsValue = Number(latest.steps ?? 5200);
+      let sleepValue = Number(latest.sleep ?? 6.5);
+      let fcValue = 78;
+
+      const dailyResponse = await apiRequest(`/health/history/daily?userId=${encodeURIComponent(userId)}`, {
+        method: 'GET',
+        token,
+      });
+
+      if (dailyResponse?.ok && dailyResponse?.data?.ok && Array.isArray(dailyResponse.data.days) && dailyResponse.data.days.length > 0) {
+        const lastDay = dailyResponse.data.days[dailyResponse.data.days.length - 1];
+
+        if (typeof lastDay.avgSleep !== 'undefined') {
+          sleepValue = Number(lastDay.avgSleep ?? sleepValue);
+        } else if (typeof lastDay.sleep !== 'undefined') {
+          sleepValue = Number(lastDay.sleep ?? sleepValue);
+        }
+
+        if (typeof lastDay.totalSteps !== 'undefined') {
+          stepsValue = Number(lastDay.totalSteps ?? stepsValue);
+        } else if (typeof lastDay.steps !== 'undefined') {
+          stepsValue = Number(lastDay.steps ?? stepsValue);
+        }
+
+        if (typeof lastDay.avgHeartRate !== 'undefined') {
+          fcValue = Number(lastDay.avgHeartRate ?? fcValue);
+        } else if (typeof lastDay.heartRate !== 'undefined') {
+          fcValue = Number(lastDay.heartRate ?? fcValue);
+        }
+      }
+
+      applyData({
+        stepsValue: clamp(stepsValue, 0, 50000),
+        sleepValue: clamp(sleepValue, 0, 24),
+        fcValue: clamp(fcValue, 30, 200),
+      });
+
+      setDataSource('backend');
+    } catch (error) {
+      console.log('PATIENT DASHBOARD FALLBACK:', error);
+
+      applyData({
+        stepsValue: 5200,
+        sleepValue: 6.5,
+        fcValue: 78,
+      });
+
+      setDataSource('fallback demo');
+    }
+  };
+
   useEffect(() => {
-    Animated.timing(animatedValue, {
-      toValue: score,
-      duration: 1200,
-      useNativeDriver: false,
-    }).start();
-    const timer = setInterval(updateData, 5000);
+    animateScore(score);
+    loadRealData();
+
+    const timer = setInterval(() => {
+      loadRealData();
+    }, 5000);
+
     return () => clearInterval(timer);
-  }, []);
+  }, [userId, token]);
 
   const strokeDashoffset = animatedValue.interpolate({
     inputRange: [0, 100],
     outputRange: [circumference, 0],
   });
 
-  const classification =
-    score < 33 ? 'Risco Alto' : score < 67 ? 'Atenção' : 'Estável';
+  const classification = classifyRisk(score);
 
-  // ------------------------------
-  // RENDER ORIGINAL PRESERVADO
-  // ------------------------------
+  const activityRisk = steps < 5000 ? 'Alto' : steps < 7000 ? 'Médio' : 'Baixo';
+  const sleepRisk = sleep < 6 ? 'Alto' : sleep < 7 ? 'Médio' : 'Baixo';
+
+  const activityRiskColor =
+    activityRisk === 'Alto' ? '#d9372e' : activityRisk === 'Médio' ? '#f2c037' : '#3cb371';
+
+  const sleepRiskColor =
+    sleepRisk === 'Alto' ? '#d9372e' : sleepRisk === 'Médio' ? '#f2c037' : '#3cb371';
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>Início</Text>
+        <Text style={styles.sourceText}>Fonte: {dataSource}</Text>
 
-        {/* Gauge semicircular */}
         <View style={styles.gaugeContainer}>
           <Svg width="260" height="140" viewBox="0 0 260 140">
             <Defs>
@@ -102,7 +197,6 @@ const DashboardScreen = ({ userId }) => {
           </View>
         </View>
 
-        {/* Cards */}
         <View style={styles.cardRow}>
           <View style={styles.card}>
             <Ionicons name="heart" size={28} color="#e63946" />
@@ -126,28 +220,44 @@ const DashboardScreen = ({ userId }) => {
           </View>
         </View>
 
-        {/* Análise de Risco */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Análise de Risco</Text>
           <View style={styles.riskRow}>
             <Text style={styles.riskLabel}>Atividade Física</Text>
-            <Text style={[styles.riskValue, { color: '#d9372e' }]}>Alto</Text>
+            <Text style={[styles.riskValue, { color: activityRiskColor }]}>{activityRisk}</Text>
           </View>
-          <Text style={styles.riskSub}>4.700 passos/dia · 82% consistência</Text>
+          <Text style={styles.riskSub}>
+            {Math.round(steps)} passos/dia · {Math.round(clamp((steps / 8000) * 100, 0, 100))}% consistência
+          </Text>
 
           <View style={styles.riskRow}>
             <Text style={styles.riskLabel}>Padrão de Sono</Text>
-            <Text style={[styles.riskValue, { color: '#f2c037' }]}>Médio</Text>
+            <Text style={[styles.riskValue, { color: sleepRiskColor }]}>{sleepRisk}</Text>
           </View>
-          <Text style={styles.riskSub}>6.5 h/noite · 70% consistência</Text>
+          <Text style={styles.riskSub}>
+            {sleep.toFixed(1)} h/noite · {Math.round(clamp((sleep / 8) * 100, 0, 100))}% consistência
+          </Text>
         </View>
 
-        {/* Recomendações */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Recomendações</Text>
-          <Text style={styles.recommend}>⚡ Aumente seus passos diários gradualmente</Text>
-          <Text style={styles.recommend}>🌿 Reserve tempo para relaxar</Text>
-          <Text style={styles.recommend}>🕒 Mantenha um horário fixo para dormir</Text>
+          {steps < 7000 ? (
+            <Text style={styles.recommend}>⚡ Aumente seus passos diários gradualmente</Text>
+          ) : (
+            <Text style={styles.recommend}>✅ Continue mantendo um bom nível de atividade</Text>
+          )}
+
+          {fc > 85 ? (
+            <Text style={styles.recommend}>🌿 Reserve tempo para relaxar e monitorar o estresse</Text>
+          ) : (
+            <Text style={styles.recommend}>💓 Frequência cardíaca dentro de faixa confortável</Text>
+          )}
+
+          {sleep < 7 ? (
+            <Text style={styles.recommend}>🕒 Mantenha um horário fixo para dormir</Text>
+          ) : (
+            <Text style={styles.recommend}>😴 Seu padrão de sono está em boa faixa</Text>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -163,7 +273,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins_600SemiBold',
     color: '#0d6c8b',
     marginTop: 20,
+    marginBottom: 4,
+  },
+  sourceText: {
+    fontSize: 12,
+    color: '#777',
     marginBottom: 10,
+    fontStyle: 'italic',
   },
 
   gaugeContainer: { alignItems: 'center', marginBottom: 20 },
