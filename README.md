@@ -1,151 +1,224 @@
-# careplus-predict
-Software Linux do Careplus Predict.
+# 🩺 CarePlus Predict
 
-# 🏥 CarePlus Predict
-
-Sistema mobile + backend para monitoramento de dados de saúde em tempo real.
+Sistema inteligente de monitoramento de saúde com IA preditiva baseado em dados fisiológicos (PPG).
 
 ---
 
-## 🚀 Como executar o projeto
+## 🚀 Arquitetura
 
-### 1. Clonar o repositório
+```
+careplus-predict/
+├── api/    → Backend (Node.js + Fastify)
+├── expo/   → App mobile (React Native + Expo)
+├── ml/     → IA (Python + FastAPI + PyTorch)
+```
+
+---
+
+## 📦 Tecnologias
+
+- **Frontend:** React Native (Expo)
+- **Backend:** Node.js (Fastify)
+- **IA:** Python (FastAPI + PyTorch)
+- **Banco:** SQLite
+- **Dataset:** PPG-DaLiA
+
+---
+
+## ⚙️ Pré-requisitos
+
+### 🔹 Comum (todos os sistemas)
+- Node.js ≥ 18
+- Python ≥ 3.10
+- Git
+
+### 🔹 Opcional
+- Expo Go (celular)
+- VS Code
+
+---
+
+## 🛠️ Instalação
+
+### 1. Clonar repositório
 
 ```bash
-git clone https://github.com/lincoln743/careplus-predict
+git clone https://github.com/lincoln743/careplus-predict.git
 cd careplus-predict
 ```
 
 ---
 
-## 🔧 Backend (API)
-
-### 2. Instalar dependências
+## 🔧 BACKEND (API)
 
 ```bash
 cd api
 npm install
-```
-
-### 3. Rodar o servidor
-
-```bash
 node server.js
 ```
 
-✔ A API será iniciada em:
+Servidor rodando em:
 
 ```
 http://localhost:3333
 ```
 
----
-
-## 📱 Frontend (Expo)
-
-### 4. Instalar dependências
+Teste:
 
 ```bash
-cd ../expo
+curl http://localhost:3333/ping
+```
+
+---
+
+## 🤖 IA (Machine Learning)
+
+```bash
+cd ml
+
+python3 -m venv venv
+
+# Linux / Mac
+source venv/bin/activate
+
+# Windows
+venv\Scripts\activate
+
+pip install -r requirements.txt
+```
+
+### Rodar API de inferência
+
+```bash
+uvicorn app:app --host 0.0.0.0 --port 8000
+```
+
+Teste:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+---
+
+## 📱 FRONTEND (Expo)
+
+```bash
+cd expo
 npm install
+npx expo start
 ```
+
+### Para rodar no celular
+
+1. Instale **Expo Go**
+2. Conecte na mesma rede Wi-Fi
+3. Escaneie o QR code
 
 ---
 
-## ⚠️ CONFIGURAÇÃO OBRIGATÓRIA (IMPORTANTE)
+## 🌐 Configuração de IP
 
-Para o aplicativo funcionar no celular, você precisa ajustar o IP da máquina.
-
-### 🔎 Descobrir seu IP local
-
-No terminal:
-
-```bash
-ip a
-```
-
-Procure por algo como:
-
-```
-inet 192.168.X.X
-```
-
----
-
-### ✏️ Alterar no arquivo:
+No arquivo:
 
 ```
 expo/src/services/api.js
 ```
 
-Substitua esta linha:
+Defina seu IP local:
 
 ```js
-ios: "http://192.168.15.180:3333",
-android: "http://192.168.15.180:3333",
-```
-
-Pelo seu IP atual:
-
-```js
-ios: "http://SEU_IP:3333",
-android: "http://SEU_IP:3333",
+export const API_BASE_URL = "http://SEU_IP_LOCAL:3333";
 ```
 
 Exemplo:
 
 ```js
-ios: "http://192.168.0.25:3333",
-android: "http://192.168.0.25:3333",
+export const API_BASE_URL = "http://192.168.0.200:3333";
 ```
 
 ---
 
-## ▶️ Rodar o app
+## 🔐 Login padrão
+
+### Paciente
+```
+email: paciente@careplus.com
+senha: 123456
+```
+
+### Médico
+```
+email: medico@careplus.com
+senha: 123456
+```
+
+---
+
+## 🔄 Fluxo do Sistema
+
+```
+App (Expo)
+   ↓
+Node API (Fastify)
+   ↓
+Python AI (FastAPI)
+   ↓
+Modelo PyTorch
+```
+
+---
+
+## 📊 Funcionalidades
+
+- ✅ Login com autenticação
+- ✅ Dashboard médico e paciente
+- ✅ Coleta de dados de saúde
+- ✅ Integração com IA preditiva
+- ✅ Predição de frequência cardíaca
+- 🔜 Score de risco em tempo real
+
+---
+
+## ⚠️ Observações
+
+- Dataset PPG-DaLiA não está incluído (muito grande)
+- Arquivos `.npy` e dados brutos são ignorados no Git
+- Certifique-se de que backend e IA estejam rodando antes do app
+
+---
+
+## 🧪 Testes rápidos
+
+### API Node
 
 ```bash
-npx expo start -c
+curl http://localhost:3333/ping
 ```
 
-* Escaneie o QR Code com **Expo Go**
-* Ou pressione:
+### IA
 
-  * `a` → Android Emulator
-  * `w` → Web
-
----
-
-## 🧪 Usuários de teste
-
-| Tipo     | Email                                                 | Senha  |
-| -------- | ----------------------------------------------------- | ------ |
-| Paciente | [paciente@careplus.com](mailto:paciente@careplus.com) | 123456 |
-| Médico   | [medico@careplus.com](mailto:medico@careplus.com)     | 123456 |
+```bash
+curl http://127.0.0.1:8000/health
+```
 
 ---
 
-## ❗ Problemas comuns
+## 📌 Versão atual
 
-### ❌ "Network request failed"
-
-➡️ IP não configurado corretamente no `api.js`
-
----
-
-### ❌ Não abre no celular
-
-➡️ Celular e computador devem estar na **mesma rede Wi-Fi**
+```
+v1.0 — Login + Navegação + IA integrada
+```
 
 ---
 
-### ❌ Funciona no web mas não no celular
+## 👨‍💻 Autor
 
-➡️ Provavelmente ainda está usando `localhost`
+Next Gen
+Projeto acadêmico + aplicação real de IA em saúde
 
 ---
 
-## 📌 Tecnologias
+## 📄 Licença
 
-* React Native (Expo)
-* Node.js (Fastify)
-* SQLite (better-sqlite3)
+Uso educacional
