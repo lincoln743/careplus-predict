@@ -11,6 +11,9 @@ ml/.env
 ml/.venv/
 ml/venv/
 ml/__pycache__/
+ml/data/
+ml/models/
+ml/artifacts/
 *.pyc
 *.pyo
 *.pyd
